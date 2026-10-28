@@ -211,6 +211,20 @@ test('merging before approval in quest 3 costs XP but still moves on', async () 
   assert.equal(gh.state.quests[3].earned, 125)
 })
 
+test('merging the PR in quest 2 before it is ready explains how to recover', async () => {
+  const { gh, send, push, openPr, merge, say } = setup()
+  await send('workflow_dispatch', { inputs: { action: 'start' } }, 'mentor')
+  await say(`/verify ${labCode('setup', PLAYER)}`)
+  await push('feat/hi', { 'hello.md': 'hi\n' })
+  const pr = await openPr('feat/hi', 'Update hello.md', '## What\n<!-- describe -->\n')
+  await merge(pr)
+  assert.equal(gh.state.level, 2)
+  assert.match(gh.said(pr.number), /merged before I could check it/)
+  Object.assign(pr, { title: 'Add Niraj to the players list', body: TEMPLATE_OK })
+  await send('pull_request', { action: 'edited', pull_request: pr })
+  assert.equal(gh.state.level, 3)
+})
+
 test('mentor can skip and reset', async () => {
   const { gh, send } = setup()
   await send('workflow_dispatch', { inputs: { action: 'start' } }, 'mentor')

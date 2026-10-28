@@ -118,6 +118,11 @@ export const QUESTS = [
       'The description already contains the headings. Write your text under each one; the grey `<!-- -->` notes are invisible and don\'t count.',
     ],
     async onEvent(ctx) {
+      const early = merged(ctx)
+      if (early) {
+        // A merged PR can still be edited, and an edit re-runs the check below.
+        return ctx.once(`early:${early.number}`, () => ctx.sayPr(early.number, 'This PR was merged before I could check it, so the quest is still open. Edit the title and description (the **Edit** button next to the title) and I\'ll check it again. Next time, wait for my OK before merging.'))
+      }
       const pr = prOf(ctx, ['opened', 'edited', 'reopened', 'synchronize'])
       if (!pr) return
       ctx.data.attempts = (ctx.data.attempts || 0) + 1
