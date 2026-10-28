@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "player": "nirajkaushik22",
+  "level": 0,
+  "xp": 0,
+  "rank": "Intern",
+  "level_label": "0 of 10",
+  "started_at": "2026-10-28T19:55:45.485Z",
+  "finished_at": null,
+  "log_issue": 4,
+  "quests": {
+    "0": {
+      "id": "setup",
+      "issue": null,
+      "opened_at": "2026-10-28T19:55:46.699Z",
+      "completed_at": null,
+      "hints": 0,
+      "penalty": 0,
+      "earned": null,
+      "data": {}
+    }
+  },
+  "achievements": [],
+  "penalties": []
+}
