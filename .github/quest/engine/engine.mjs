@@ -118,6 +118,16 @@ export async function run({ gh, event, eventName, config, now = () => new Date()
     return ctx
   }
 
+  // Runs the current quest's checks again outside of the event they expect.
+  // Quests that read GitHub's current state catch up on events GitHub dropped.
+  async function recheck() {
+    const q = QUESTS[state.level]
+    if (!q?.onEvent) return
+    const before = JSON.stringify(state)
+    await q.onEvent(makeCtx(state.level))
+    if (JSON.stringify(state) !== before) await save()
+  }
+
   // A quest whose start failed (no issue yet) gets started again.
   async function resumeIfStuck() {
     const qs = state.quests[state.level]
@@ -132,7 +142,10 @@ export async function run({ gh, event, eventName, config, now = () => new Date()
     const action = event.inputs?.action || 'start'
     if (action === 'retry') {
       if (!state || state.finished_at) return log('Nothing to retry.')
-      return log((await resumeIfStuck()) ? 'Retried.' : 'Nothing was stuck.')
+      if (await resumeIfStuck()) return log('Retried.')
+      // Not stuck: re-check the current quest, in case the engine missed an event.
+      await recheck()
+      return log('Re-checked the current quest.')
     }
     if (action === 'start') {
       if (state && !state.finished_at) return log('Already started; use reset first to begin again.')
@@ -184,7 +197,9 @@ export async function run({ gh, event, eventName, config, now = () => new Date()
     const [cmd, ...args] = text.trim().split(/\s+/)
     const reply = (body) => gh.comment(issueNumber, body)
     if (cmd === '/status') {
-      return reply(`**Quest ${i}: ${q.title}** (#${qs.issue}). ${state.xp} XP, rank **${rankFor(state.xp)}**. Full progress in #${state.log_issue}.`)
+      await reply(`**Quest ${i}: ${q.title}** (#${qs.issue}). ${state.xp} XP, rank **${rankFor(state.xp)}**. Full progress in #${state.log_issue}.`)
+      if (actor === player && q.onEvent) await q.onEvent(makeCtx(i))
+      return
     }
     if (actor !== player) return
     if (cmd === '/hint') {

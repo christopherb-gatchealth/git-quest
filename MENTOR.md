@@ -52,8 +52,10 @@ Quest 0 opens as an issue that mentions them, so GitHub emails them.
 ## While they play
 
 - The `quest-log` issue shows their progress. Watch the repo to follow along.
-- The next quest didn't open after one was completed? Run the workflow with
-  `retry` (any `/status` comment from the player also retries).
+- The next quest didn't open after one was completed, or the bot didn't
+  react to something the player did? Run the workflow with `retry` (any
+  `/status` comment from the player does the same). It reopens a quest that
+  failed to open, or checks the current quest again.
 - Stuck on something the bot doesn't handle? Run the workflow with `skip`
   to pass the current quest (0 XP for it).
 - Something broke? **Actions → Quest Engine** shows every run and its log.

@@ -19,7 +19,7 @@ Make the requested change, reply to the reviewer, get approved, and merge.
 
 3. Reply to my comment: in **Files changed**, click **Reply...** under it and say what you did.
 4. Wait for my approval (a green tick).
-5. Click **Squash and merge**, confirm, then **Delete branch**. Squash merging turns all the PR's commits into a single commit on `main`, which is how the team merges.
+5. Click **Squash and merge** and confirm. GitHub deletes the branch for you afterwards. Squash merging turns all the PR's commits into a single commit on `main`, which is how the team merges.
 6. Tidy up your laptop:
 
    ```bash

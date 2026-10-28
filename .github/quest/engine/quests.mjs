@@ -140,6 +140,7 @@ export const QUESTS = [
       const n = ctx.prev('pull-request').pr
       const pr = await ctx.gh.getPull(n)
       ctx.data.pr = n
+      ctx.data.branch = pr.head.ref
       const c = await ctx.gh.fileComment(n, {
         path: 'hello.md',
         commitId: pr.head.sha,
@@ -150,25 +151,26 @@ export const QUESTS = [
     },
     async onEvent(ctx) {
       const n = ctx.data.pr
-      const e = ctx.event
-      if (ctx.eventName === 'pull_request_review_comment' && e.action === 'created' && e.pull_request.number === n && e.comment.in_reply_to_id === ctx.data.commentId) {
-        ctx.data.replied = true
+      // Read the PR as it is now instead of trusting this one event: when
+      // events arrive close together, GitHub can drop one before the engine sees it.
+      if (!ctx.data.replied) {
+        const comments = await ctx.gh.listReviewComments(n)
+        ctx.data.replied = comments.some((c) => c.in_reply_to_id === ctx.data.commentId && (c.user?.login || '').toLowerCase() === ctx.player.toLowerCase())
       }
-      const update = prOf(ctx, ['synchronize'])
-      if (update && update.number === n) {
-        const text = await ctx.gh.getFile('hello.md', update.head.sha)
+      if (!ctx.data.fixed) {
+        const head = (await ctx.gh.getPull(n)).head.sha
+        const text = await ctx.gh.getFile('hello.md', head)
+        const pushed = prOf(ctx, ['synchronize'])?.number === n || pushOf(ctx)?.branch === ctx.data.branch
         if (/^\s*[-*]?\s*fun fact:/im.test(text || '')) ctx.data.fixed = true
-        else await ctx.once(`nofix:${update.head.sha}`, () => ctx.sayPr(n, 'I see a new push, but `hello.md` still has no line starting with `Fun fact:`.'))
+        else if (pushed) await ctx.once(`nofix:${head}`, () => ctx.sayPr(n, 'I see a new push, but `hello.md` still has no line starting with `Fun fact:`.'))
       }
 
       const done = merged(ctx)
       if (done && done.number === n) {
-        if (!ctx.data.fixed) {
-          const text = await ctx.gh.getFile('hello.md', 'main')
-          if (/^\s*[-*]?\s*fun fact:/im.test(text || '')) ctx.data.fixed = true
-        }
-        if (!ctx.data.approved) ctx.penalize(25, 'Merged before the reviewer approved')
-        return ctx.complete(ctx.data.approved ? `PR #${n} reviewed, approved and merged.` : `PR #${n} merged, though without an approval. At work, wait for the green tick.`)
+        // Doing both steps counts, even if the merge beat the bot's approval.
+        const handled = ctx.data.approved || (ctx.data.fixed && ctx.data.replied)
+        if (!handled) ctx.penalize(25, 'Merged before the reviewer approved')
+        return ctx.complete(handled ? `PR #${n} reviewed, updated and merged.` : `PR #${n} merged, though without an approval. At work, wait for the green tick.`)
       }
       const closed = prOf(ctx, ['closed'])
       if (closed && closed.number === n) return ctx.sayPr(n, 'This PR was closed without merging. Click **Reopen pull request** to carry on with the quest.')
@@ -177,9 +179,9 @@ export const QUESTS = [
         ctx.data.approved = true
         await ctx.save()
         try {
-          await ctx.gh.review(n, 'APPROVE', 'Looks great, approved! Merge it with **Squash and merge**, then click **Delete branch**.')
+          await ctx.gh.review(n, 'APPROVE', 'Looks great, approved! Merge it with **Squash and merge**.')
         } catch {
-          await ctx.sayPr(n, 'Looks great, approved! Merge it with **Squash and merge**, then click **Delete branch**.')
+          await ctx.sayPr(n, 'Looks great, approved! Merge it with **Squash and merge**.')
         }
       } else if (ctx.data.fixed && !ctx.data.replied) {
         await ctx.once('needreply', () => ctx.sayPr(n, 'The fix is in. Last step: reply to my comment on `hello.md` in the **Files changed** tab, so the reviewer knows it\'s handled.'))
@@ -240,6 +242,8 @@ export const QUESTS = [
 
       const done = merged(ctx)
       if (done && done.head.ref === ctx.data.branch) {
+        // The push that finished the sync may never have reached the engine; check the PR's commits.
+        if (ctx.data.phase === 'sync' && (await contains(ctx, ctx.data.botSha, done.head.sha))) ctx.data.phase = 'pr'
         if (ctx.data.phase !== 'pr') ctx.penalize(25, 'Merged before finishing the sync steps')
         return ctx.complete(`Branched from fresh \`main\`, pulled a teammate's push, and merged PR #${done.number}.`)
       }
@@ -270,27 +274,33 @@ export const QUESTS = [
           body: 'A teammate changed the same line you did, and merged first.',
           edit: async (read) => ({ 'config/settings.md': (await read('config/settings.md')).replace(/^favorite_editor:.*$/m, 'favorite_editor: vim (picked by the team)') }),
         })
-        Object.assign(ctx.data, { pr: pr.number, teamSha: sha, phase: 'conflict', pushes: 0 })
+        Object.assign(ctx.data, { pr: pr.number, teamSha: sha, phase: 'conflict', pushes: 0, lastSha: pr.head.sha })
         await ctx.save()
         return ctx.sayPr(pr.number, `**Uh oh.** A teammate just merged a change to the very same line in \`config/settings.md\`. Scroll down: this PR now says *"This branch has conflicts that must be resolved"*.\n\nResolve it on your laptop:\n\n\`\`\`bash\ngit switch main\ngit pull\ngit switch ${pr.head.ref}\ngit merge main          # git reports CONFLICT\n\`\`\`\n\nOpen \`config/settings.md\`, decide what the line should say, delete the conflict markers, then:\n\n\`\`\`bash\ngit add config/settings.md\ngit commit --no-edit\ngit push\n\`\`\``)
       }
 
-      if (pr && ctx.data.phase === 'conflict' && pr.number === ctx.data.pr && ctx.event.action === 'synchronize') {
-        ctx.data.pushes += 1
-        const sha = pr.head.sha
-        if (!(await contains(ctx, ctx.data.teamSha, sha))) {
-          return ctx.once(`nomerge:${sha}`, () => ctx.sayPr(pr.number, 'This push doesn\'t include the teammate\'s change from `main` yet. Run `git merge main` on your branch, resolve, commit, and push.'))
+      // Checks the PR's latest commit on any event, not only its own push
+      // event, which GitHub can drop when events arrive close together.
+      if (ctx.data.phase === 'conflict' && !prOf(ctx, ['closed'])) {
+        const n = ctx.data.pr
+        const sha = (await ctx.gh.getPull(n)).head.sha
+        if (sha !== ctx.data.lastSha) {
+          ctx.data.lastSha = sha
+          ctx.data.pushes += 1
+          if (!(await contains(ctx, ctx.data.teamSha, sha))) {
+            return ctx.once(`nomerge:${sha}`, () => ctx.sayPr(n, 'This push doesn\'t include the teammate\'s change from `main` yet. Run `git merge main` on your branch, resolve, commit, and push.'))
+          }
+          const text = (await ctx.gh.getFile('config/settings.md', sha)) || ''
+          if (/^(<{7}|={7}|>{7})/m.test(text)) {
+            return ctx.once(`markers:${sha}`, () => ctx.sayPr(n, 'Careful: `config/settings.md` still contains conflict markers (`<<<<<<<`, `=======` or `>>>>>>>`). Delete them, commit, and push.'))
+          }
+          if ((await ctx.gh.getMergeable(n)) === false) {
+            return ctx.once(`dirty:${sha}`, () => ctx.sayPr(n, 'GitHub still reports a conflict on this PR. Merge `main` into your branch again and push.'))
+          }
+          ctx.data.phase = 'resolved'
+          if (ctx.data.pushes === 1) ctx.achieve('Clean merge', 'Resolved a conflict in one push')
+          return ctx.sayPr(n, 'Conflict resolved! Now **Squash and merge** this PR.')
         }
-        const text = (await ctx.gh.getFile('config/settings.md', sha)) || ''
-        if (/^(<{7}|={7}|>{7})/m.test(text)) {
-          return ctx.once(`markers:${sha}`, () => ctx.sayPr(pr.number, 'Careful: `config/settings.md` still contains conflict markers (`<<<<<<<`, `=======` or `>>>>>>>`). Delete them, commit, and push.'))
-        }
-        if ((await ctx.gh.getMergeable(pr.number)) === false) {
-          return ctx.once(`dirty:${sha}`, () => ctx.sayPr(pr.number, 'GitHub still reports a conflict on this PR. Merge `main` into your branch again and push.'))
-        }
-        ctx.data.phase = 'resolved'
-        if (ctx.data.pushes === 1) ctx.achieve('Clean merge', 'Resolved a conflict in one push')
-        return ctx.sayPr(pr.number, 'Conflict resolved! Now **Squash and merge** this PR.')
       }
 
       const done = merged(ctx)
