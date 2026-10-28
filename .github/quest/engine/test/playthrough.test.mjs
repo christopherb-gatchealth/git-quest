@@ -123,7 +123,8 @@ test('a full playthrough, mistakes included', async () => {
   const beforeBot = gh.commits.get(quest().data.botSha).parents[0]
   await push(about, { 'about/nirajkaushik22.md': 'Niraj\nFrontend\nGit\nLine 4\n' }, { from: beforeBot, forced: true })
   assert.match(gh.said(q4), /force-push/)
-  await push(about, { 'about/nirajkaushik22.md': 'Niraj\nFrontend\nGit\nLine 4\n' }, { parents: [gh.refs.get(about), quest().data.botSha], message: 'Merge' })
+  // The bot's re-push lands on top of the player's commit, so `git pull`
+  // fast-forwards and there's nothing to push: the PR step is next.
   assert.equal(quest().data.phase, 'pr')
   await merge(await openPr(about, 'Add an about page for Niraj'))
   assert.equal(gh.state.level, 5)

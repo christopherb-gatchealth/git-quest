@@ -235,8 +235,11 @@ export const QUESTS = [
         if (head.forced) {
           ctx.penalize(50, 'Force-pushed over a teammate\'s commit')
           ctx.data.botSha = await ctx.gh.botPush(head.branch, async (read) => ({ 'about/README.md': `${(await read('about/README.md')).trimEnd()}\n\n- [${login}](${login}.md)\n` }), `Add ${login} to the team list again`)
+          // Their commit now sits on top of the player's, so the branch has
+          // both and there's nothing left for the player to push.
+          ctx.data.phase = 'pr'
           await ctx.save()
-          return ctx.say('Ouch: that was a force-push, and it deleted your teammate\'s commit from the branch (-50 XP). On a shared branch, never use `--force`; use `git pull` instead.\n\nI\'ve pushed their change again. Run `git pull --no-edit`, then `git push`.')
+          return ctx.say('Ouch: that was a force-push, and it deleted your teammate\'s commit from the branch (-50 XP). On a shared branch, never use `--force`; use `git pull` instead.\n\nI\'ve pushed their change again, on top of yours. Run `git pull --no-edit` to bring it to your laptop (there\'s nothing new to push after that), then open a PR for the branch (fill in the template) and **Squash and merge** it.')
         }
       }
 
