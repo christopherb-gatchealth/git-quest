@@ -11,6 +11,7 @@ export class FakeGitHub {
     this.patches = new Map() // sha -> [{ patch }]
     this.runs = new Map() // sha -> [{ conclusion }]
     this.reviews = []
+    this.reviewComments = [] // { n, in_reply_to_id, user }
     this.labels = new Set()
     this.state = null
     this.stateSha = null
@@ -109,6 +110,9 @@ export class FakeGitHub {
   }
   async listPullFiles(n) {
     return this.pulls.get(n).files
+  }
+  async listReviewComments(n) {
+    return this.reviewComments.filter((c) => c.n === n)
   }
   async listPullCommits(n) {
     return this.pulls.get(n).commits

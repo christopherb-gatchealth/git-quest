@@ -28,18 +28,17 @@ function setup() {
   const issueOf = () => quest().issue
 
   // Commits on a branch (from its head, or from `from`) and sends the push event.
-  async function push(branch, changes, { from, message = 'Change', username = PLAYER, forced = false, parents } = {}) {
+  // dropped: make the commit but send no events, as when GitHub drops them.
+  async function push(branch, changes, { from, message = 'Change', username = PLAYER, forced = false, parents, dropped = false } = {}) {
     const head = gh.refs.get(branch)
     const ps = parents ?? [from ?? head ?? gh.refs.get('main')]
     const sha = gh.commit(ps, changes, message, username)
     gh.refs.set(branch, sha)
-    // Like a real push that creates a branch: GitHub sends no commit list.
-    await send('push', { ref: `refs/heads/${branch}`, after: sha, forced, deleted: false, commits: [] })
     const pr = [...gh.pulls.values()].find((p) => p.head.ref === branch && !p.merged)
-    if (pr) {
-      pr.head.sha = sha
-      await send('pull_request', { action: 'synchronize', pull_request: pr })
-    }
+    if (pr) pr.head.sha = sha
+    // Like a real push that creates a branch: GitHub sends no commit list.
+    if (!dropped) await send('push', { ref: `refs/heads/${branch}`, after: sha, forced, deleted: false, commits: [] })
+    if (pr && !dropped) await send('pull_request', { action: 'synchronize', pull_request: pr })
     return sha
   }
   const openPr = async (branch, title, body = TEMPLATE_OK, extra = {}) => {
@@ -50,12 +49,18 @@ function setup() {
   }
   const merge = async (pr) => send('pull_request', { action: 'closed', pull_request: gh.mergePull(pr.number) })
   const say = (body, issue = issueOf()) => send('issue_comment', { action: 'created', comment: { body }, issue: { number: issue } })
+  // Replies to the reviewer's comment on the PR.
+  async function reply(pr, { dropped = false } = {}) {
+    const comment = { in_reply_to_id: quest().data.commentId, user: { login: PLAYER } }
+    gh.reviewComments.push({ n: pr.number, ...comment })
+    if (!dropped) await send('pull_request_review_comment', { action: 'created', pull_request: { number: pr.number }, comment })
+  }
 
-  return { gh, send, quest, issueOf, push, openPr, merge, say }
+  return { gh, send, quest, issueOf, push, openPr, merge, say, reply }
 }
 
 test('a full playthrough, mistakes included', async () => {
-  const { gh, send, quest, issueOf, push, openPr, merge, say } = setup()
+  const { gh, send, quest, issueOf, push, openPr, merge, say, reply } = setup()
 
   // Start
   await send('workflow_dispatch', { inputs: { action: 'start' } }, 'mentor')
@@ -100,7 +105,7 @@ test('a full playthrough, mistakes included', async () => {
   // Quest 3: fix, reply, approval, merge
   await push(branch, { 'hello.md': '# Hello\n\n## Players\n- niraj: hi!\nFun fact: I like chess.\n' })
   assert.match(gh.said(pr1.number), /reply to my comment/)
-  await send('pull_request_review_comment', { action: 'created', pull_request: { number: pr1.number }, comment: { in_reply_to_id: quest().data.commentId } })
+  await reply(pr1)
   assert.equal(gh.reviews.at(-1).event, 'APPROVE')
   await merge(pr1)
   assert.equal(gh.state.level, 4)
@@ -232,4 +237,69 @@ test('a quest whose start fails is retried on the next event', async () => {
   await say('/status', 1)
   assert.ok(gh.state.quests[4].issue)
   assert.ok(gh.state.quests[4].data.teamSha)
+})
+
+// Plays quests 0 to 2, leaving the player at quest 3 with PR `pr` open.
+async function toReview(t) {
+  await t.send('workflow_dispatch', { inputs: { action: 'start' } }, 'mentor')
+  await t.say(`/verify ${labCode('setup', PLAYER)}`)
+  await t.push('feat/hi', { 'hello.md': 'hi\n' })
+  return t.openPr('feat/hi', 'Add me to the list')
+}
+
+test('quest 3 still counts the fix and the reply when GitHub drops their events', async () => {
+  const t = setup()
+  const pr = await toReview(t)
+  await t.push('feat/hi', { 'hello.md': 'hi\nFun fact: I like chess.\n' }, { dropped: true })
+  await t.reply(pr, { dropped: true })
+  await t.merge(pr)
+  assert.equal(t.gh.state.level, 4)
+  assert.equal(t.gh.state.quests[3].earned, 150)
+})
+
+test('/status catches quest 3 up on dropped events, so the bot approves', async () => {
+  const t = setup()
+  const pr = await toReview(t)
+  await t.push('feat/hi', { 'hello.md': 'hi\nFun fact: I like chess.\n' }, { dropped: true })
+  await t.reply(pr, { dropped: true })
+  assert.equal(t.gh.reviews.at(-1).event, 'REQUEST_CHANGES')
+  await t.say('/status')
+  assert.equal(t.gh.reviews.at(-1).event, 'APPROVE')
+})
+
+test('quest 5 notices a resolved conflict whose push event was dropped', async () => {
+  const t = setup()
+  const { gh } = t
+  await t.merge(await toReview(t)) // quest 3, with its penalty
+  // Quest 4, quickly
+  const about = 'feat/about-nirajkaushik22'
+  await t.push(about, { 'about/nirajkaushik22.md': 'Niraj\n' }, { from: gh.refs.get('main') })
+  await t.push(about, { 'about/nirajkaushik22.md': 'Niraj\nMore\n' }, { parents: [gh.refs.get(about)] })
+  await t.merge(await t.openPr(about, 'Add an about page for Niraj'))
+  assert.equal(gh.state.level, 5)
+  // Quest 5: the resolving push is dropped, then the mentor runs retry
+  const fav = 'feat/favorite-editor'
+  await t.push(fav, { 'config/settings.md': 'theme: dark\nfavorite_editor: vscode\ntab_width: 2\n' }, { from: gh.refs.get('main') })
+  const pr = await t.openPr(fav, 'Set my favourite editor', TEMPLATE_OK, { files: [{ filename: 'config/settings.md', patch: '+favorite_editor: vscode' }] })
+  await t.push(fav, { 'config/settings.md': 'theme: dark\nfavorite_editor: vscode\ntab_width: 2\n' }, { parents: [gh.refs.get(fav), gh.refs.get('main')], dropped: true })
+  assert.equal(t.quest().data.phase, 'conflict')
+  await t.send('workflow_dispatch', { inputs: { action: 'retry' } }, 'mentor')
+  assert.equal(t.quest().data.phase, 'resolved')
+  assert.match(gh.said(pr.number), /Conflict resolved/)
+  assert.ok(gh.state.achievements.some((a) => a.name === 'Clean merge'))
+})
+
+test('quest 4 skips the penalty when the merged branch did sync, even if that push was dropped', async () => {
+  const t = setup()
+  const { gh } = t
+  await t.merge(await toReview(t))
+  const about = 'feat/about-nirajkaushik22'
+  await t.push(about, { 'about/nirajkaushik22.md': 'Niraj\n' }, { from: gh.refs.get('main') })
+  assert.equal(t.quest().data.phase, 'sync')
+  await t.push(about, { 'about/nirajkaushik22.md': 'Niraj\nLine 4\n' }, { parents: [gh.refs.get(about)], dropped: true })
+  // A PR opened without the pull: GitHub sends "opened", but the merge is what's checked
+  const pr = gh.openPull({ head: about, title: 'Add an about page for Niraj', body: TEMPLATE_OK, login: PLAYER })
+  await t.merge(pr)
+  assert.equal(gh.state.level, 5)
+  assert.equal(gh.state.quests[4].earned, 150)
 })

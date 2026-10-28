@@ -47,13 +47,18 @@ JSON
 3. Start the game: `gh workflow run quest.yml -f action=start`, or
    **Actions → Quest Engine → Run workflow**.
 
-Quest 0 opens as an issue that mentions them, so GitHub emails them.
+Quest 0 opens as an issue that mentions them, so GitHub emails them. Point
+them at `PLAYING.md`, which covers playing with Claude Code: the repo's
+`CLAUDE.md` makes it a coach rather than a player, and `/quest` tells them
+their next step.
 
 ## While they play
 
 - The `quest-log` issue shows their progress. Watch the repo to follow along.
-- The next quest didn't open after one was completed? Run the workflow with
-  `retry` (any `/status` comment from the player also retries).
+- The next quest didn't open after one was completed, or the bot didn't
+  react to something the player did? Run the workflow with `retry` (any
+  `/status` comment from the player does the same). It reopens a quest that
+  failed to open, or checks the current quest again.
 - Stuck on something the bot doesn't handle? Run the workflow with `skip`
   to pass the current quest (0 XP for it).
 - Something broke? **Actions → Quest Engine** shows every run and its log.

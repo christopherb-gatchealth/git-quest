@@ -135,6 +135,7 @@ export function makeClient({ token, owner, repo, apiUrl = 'https://api.github.co
       return null
     },
     listPullFiles: (n) => request('GET', `${R}/pulls/${n}/files?per_page=100`),
+    listReviewComments: (n) => request('GET', `${R}/pulls/${n}/comments?per_page=100`),
     listPullCommits: (n) => request('GET', `${R}/pulls/${n}/commits?per_page=100`),
     getCommit: (sha) => request('GET', `${R}/commits/${sha}`),
     review: (n, event, body) => request('POST', `${R}/pulls/${n}/reviews`, { event, body }),

@@ -9,9 +9,10 @@ branches, commits, pull requests, review, staying in sync, merge conflicts,
 reverts, keeping secrets out, local rescue skills, and a final boss where you
 ship a tested React component through CI.
 
-**Playing?** Open the **Issues** tab. The issue labelled `quest` is your
-current quest, and the `quest-log` issue tracks your XP, rank and
-achievements.
+**Playing?** Start with **[PLAYING.md](PLAYING.md)**: how the game works,
+what each quest involves, and how to use Claude Code as your coach. Then open
+the **Issues** tab. The issue labelled `quest` is your current quest, and the
+`quest-log` issue tracks your XP, rank and achievements.
 
 ## The quests
 
@@ -37,6 +38,8 @@ are hidden.
 
 | Path | What it is |
 | --- | --- |
+| `PLAYING.md` | The player's guide |
+| `CLAUDE.md`, `.claude/` | Coaching instructions and the `/quest` command for Claude Code |
 | `hello.md`, `about/`, `config/` | Files the quests ask you to change |
 | `app/` | A small Next.js app for the boss level |
 | `quest` | A helper for setup checks and local labs: `./quest help` |

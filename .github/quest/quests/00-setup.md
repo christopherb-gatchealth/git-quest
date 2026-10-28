@@ -2,6 +2,8 @@
 
 **How it works:** each quest is an issue like this one. Do the steps, and a bot checks your work and opens the next quest. Comment `/hint` if you're stuck (each hint costs a little XP).
 
+**New to this?** Read the [player's guide](https://github.com/{{owner}}/{{repo}}/blob/main/PLAYING.md) first. It explains every quest and how to use Claude Code as your coach.
+
 ## Goal
 
 Set up git, GitHub and an SSH key on your Mac, then clone this repo.

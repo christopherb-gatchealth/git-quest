@@ -10,7 +10,7 @@ A PR is how the team proposes a change: teammates read the diff, comment, and ap
 
 1. Go to the repo's page on GitHub. You'll see a yellow **Compare & pull request** banner for your branch; click it. (Or go to **Pull requests → New pull request** and pick your branch.)
 2. Check the arrows read **base: main ← compare: your branch**.
-3. Write a **title** that says what the change does, starting with a capital letter. Good: *Add Niraj to the players list*. Not good: *Update hello.md*.
+3. Write a **title** that says what the change does, starting with a capital letter. Good: *Add {{player}} to the players list*. Not good: *Update hello.md*.
 4. The description already holds a template with three headings. Write a sentence or two under each:
    - **What**: what the change does
    - **Why**: why it's needed
