@@ -47,7 +47,10 @@ JSON
 3. Start the game: `gh workflow run quest.yml -f action=start`, or
    **Actions → Quest Engine → Run workflow**.
 
-Quest 0 opens as an issue that mentions them, so GitHub emails them.
+Quest 0 opens as an issue that mentions them, so GitHub emails them. Point
+them at `PLAYING.md`, which covers playing with Claude Code: the repo's
+`CLAUDE.md` makes it a coach rather than a player, and `/quest` tells them
+their next step.
 
 ## While they play
 
