@@ -11,7 +11,7 @@
   "quests": {
     "0": {
       "id": "setup",
-      "issue": null,
+      "issue": 5,
       "opened_at": "2026-10-28T19:55:46.699Z",
       "completed_at": null,
       "hints": 0,
